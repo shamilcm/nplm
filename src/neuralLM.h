@@ -28,13 +28,15 @@ class neuralLMShared {
     vocabulary input_vocab, output_vocab;
     model nn;
 
-    explicit neuralLMShared(const std::string &filename) {
+    explicit neuralLMShared(const std::string &filename, bool premultiply = false) {
       std::vector<std::string> input_words, output_words;
       nn.read(filename, input_words, output_words);
       input_vocab = vocabulary(input_words);
       output_vocab = vocabulary(output_words);
       // this is faster but takes more memory
-      //nn.premultiply();
+      if (premultiply) {
+        nn.premultiply();
+      }
     }
 };
 
@@ -63,8 +65,8 @@ class neuralLM
     int start, null;
 
 public:
-    neuralLM(const std::string &filename) 
-      : shared(new neuralLMShared(filename)),
+    neuralLM(const std::string &filename, bool premultiply = false)
+      : shared(new neuralLMShared(filename, premultiply)),
         ngram_size(shared->nn.ngram_size), 
 	normalization(false),
 	weight(1.),
