@@ -256,7 +256,7 @@ int main(int argc, char** argv)
     // Randomly shuffle training data to improve learning
     for (data_size_t i=training_data_size-1; i>0; i--)
     {
-        data_size_t j = uniform_int_distribution<data_size_t>(0, i-1)(rng);
+        data_size_t j = boost::random::uniform_int_distribution<data_size_t>(0, i-1)(rng);
 	training_data.col(i).swap(training_data.col(j));
     }
 
