@@ -19,14 +19,14 @@ OS:=$(shell uname -s)
 ### Required libraries. You must install these prior to building.
 
 # Set this to the root directory of Boost (should have a subdirectory named boost):
-BOOST=/Users/hieu/workspace/boost/boost_1_54_0
+BOOST=/home/hieu/workspace/boost/boost_1_55_0.gcc
 #BOOST=/usr
 #BOOST=/opt/local
 # Where to find Boost header files
 BOOST_INC=$(BOOST)/include
 
 # Set this to the root directory of Eigen (should have a subdirectory named Eigen):
-EIGEN=/Users/hieu/workspace/eigen
+EIGEN=/home/hieu/workspace/eigen-3
 
 ### Optional libraries.
 

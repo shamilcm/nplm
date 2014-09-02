@@ -3,7 +3,7 @@
 
 #include <cstdlib>
 #include "neuralClasses.h"
-#include <Eigen/Dense>
+#include "../3rdparty/Eigen/Dense"
 
 namespace nplm
 {

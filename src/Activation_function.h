@@ -3,7 +3,7 @@
 
 #include <cmath>
 #include <string>
-#include <Eigen/Dense>
+#include "../3rdparty/Eigen/Dense"
 
 #include "util.h"
 

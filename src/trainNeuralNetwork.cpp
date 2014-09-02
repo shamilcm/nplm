@@ -12,8 +12,8 @@
 #include <boost/random/mersenne_twister.hpp>
 #include <boost/algorithm/string/join.hpp>
 
-#include <Eigen/Dense>
-#include <Eigen/Sparse>
+#include "../3rdparty/Eigen/Dense"
+#include "../3rdparty/Eigen/Sparse"
 #include "maybe_omp.h"
 #include <tclap/CmdLine.h>
 

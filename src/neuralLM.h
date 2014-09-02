@@ -11,7 +11,7 @@
 #include <boost/lexical_cast.hpp>
 #include <boost/shared_ptr.hpp>
 
-#include <Eigen/Dense>
+#include "../3rdparty/Eigen/Dense"
 
 #include "param.h"
 #include "util.h"
