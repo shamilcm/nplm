@@ -20,31 +20,15 @@
 #include "neuralClasses.h"
 #include "vocabulary.h"
 
-#ifdef WITH_THREADS // included in multi-threaded moses project
-#include <boost/thread/shared_mutex.hpp>
-#endif
-
 namespace nplm
 {
 
 class neuralLMShared {
-
-#ifdef WITH_THREADS
-    mutable boost::shared_mutex m_cacheLock;
-#endif
-
   public:
     vocabulary input_vocab, output_vocab;
     model nn;
 
-    std::size_t cache_size;
-    Eigen::Matrix<int,Dynamic,Dynamic> cache_keys;
-    std::vector<double> cache_values;
-    int cache_lookups, cache_hits;
-
-    explicit neuralLMShared(const std::string &filename, bool premultiply = false)
-     : cache_size(0)
-    {
+    explicit neuralLMShared(const std::string &filename, bool premultiply = false) {
       std::vector<std::string> input_words, output_words;
       nn.read(filename, input_words, output_words);
       input_vocab = vocabulary(input_words);
@@ -53,56 +37,7 @@ class neuralLMShared {
       if (premultiply) {
         nn.premultiply();
       }
-      if (cache_size) {
-        cache_keys.resize(nn.ngram_size, cache_size);
-        cache_keys.fill(-1);
-      }
     }
-
-    template <typename Derived>
-    double lookup_cache(const Eigen::MatrixBase<Derived> &ngram) {
-      std::size_t hash;
-      if (cache_size)
-      {
-        // First look in cache
-        hash = Eigen::hash_value(ngram) % cache_size; // defined in util.h
-        cache_lookups++;
-#ifdef WITH_THREADS // wait until nobody writes to cache
-        boost::shared_lock<boost::shared_mutex> read_lock(m_cacheLock);
-#endif
-        if (cache_keys.col(hash) == ngram)
-        {
-          cache_hits++;
-          return cache_values[hash];
-        }
-        else return 0;
-      }
-      else return 0;
-    }
-
-    template <typename Derived>
-    void store_cache(const Eigen::MatrixBase<Derived> &ngram, double log_prob) {
-      std::size_t hash;
-      if (cache_size) {
-        hash = Eigen::hash_value(ngram) % cache_size;
-#ifdef WITH_THREADS // block others from reading cache
-        boost::unique_lock<boost::shared_mutex> lock(m_cacheLock);
-#endif
-        // Update cache
-        cache_keys.col(hash) = ngram;
-        cache_values[hash] = log_prob;
-      }
-    }
-
-    void set_cache(std::size_t cache_size)
-    {
-        this->cache_size = cache_size;
-        cache_keys.resize(nn.ngram_size, cache_size);
-        cache_keys.fill(-1); // clears cache
-        cache_values.resize(cache_size);
-        cache_lookups = cache_hits = 0;
-    }
-
 };
 
 class neuralLM 
@@ -120,39 +55,35 @@ class neuralLM
 
     double weight;
 
+
+    std::size_t cache_size;
+    Eigen::Matrix<int,Dynamic,Dynamic> cache_keys;
+    std::vector<double> cache_values;
+    int cache_lookups, cache_hits;
+
     Eigen::Matrix<int,Eigen::Dynamic,1> ngram; // buffer for lookup_ngram
     int start, null;
 
 public:
     neuralLM(const std::string &filename, bool premultiply = false)
       : shared(new neuralLMShared(filename, premultiply)),
-        ngram_size(shared->nn.ngram_size),
+        ngram_size(shared->nn.ngram_size), 
 	normalization(false),
 	weight(1.),
 	map_digits(0),
 	width(1),
 	prop(shared->nn, 1),
+        cache_size(0),
         start(shared->input_vocab.lookup_word("<s>")),
         null(shared->input_vocab.lookup_word("<null>"))
     {
 	ngram.setZero(ngram_size);
+	if (cache_size)
+	{
+	  cache_keys.resize(ngram_size, cache_size);
+	  cache_keys.fill(-1);
+	}
 	prop.resize();
-    }
-
-    // initialize neuralLM class that shares vocab and model with base instance (for multithreaded decoding)
-    neuralLM(const neuralLM &baseInstance)
-      : shared(baseInstance.shared),
-        ngram_size(shared->nn.ngram_size),
-        normalization(false),
-        weight(1.),
-        map_digits(0),
-        width(1),
-        prop(shared->nn, 1),
-        start(shared->input_vocab.lookup_word("<s>")),
-        null(shared->input_vocab.lookup_word("<null>"))
-    {
-        ngram.setZero(ngram_size);
-        prop.resize();
     }
 
     void set_normalization(bool value) { normalization = value; }
@@ -213,10 +144,18 @@ public:
 	assert (ngram.rows() == ngram_size);
 	assert (ngram.cols() == 1);
 
-        double cached = shared->lookup_cache(ngram);
-        if (cached != 0) {
-            return cached;
-        }
+	std::size_t hash;
+	if (cache_size)
+	{
+	    // First look in cache
+	    hash = Eigen::hash_value(ngram) % cache_size; // defined in util.h
+	    cache_lookups++;
+	    if (cache_keys.col(hash) == ngram)
+	    {
+	        cache_hits++;
+		return cache_values[hash];
+	    }
+	}
 
 	// Make sure that we're single threaded. Multithreading doesn't help,
 	// and in some cases can hurt quite a lot
@@ -248,15 +187,19 @@ public:
 	}
 	stop_timer(3);
 
-        shared->store_cache(ngram, log_prob);
+	if (cache_size)
+	{
+	    // Update cache
+	    cache_keys.col(hash) = ngram;
+	    cache_values[hash] = log_prob;
+	}
 
-#ifndef WITH_THREADS
 	#ifdef __INTEL_MKL__
 	mkl_set_num_threads(save_mkl_threads);
 	#endif
 	Eigen::setNbThreads(save_eigen_threads);
 	omp_set_num_threads(save_threads);
-#endif
+
 	return log_prob;
     }
 
@@ -321,13 +264,18 @@ public:
 
     int get_order() const { return ngram_size; }
 
-    void set_cache(std::size_t cache_size) {
-        shared->set_cache(cache_size);
+    void set_cache(std::size_t cache_size)
+    {
+        this->cache_size = cache_size;
+	cache_keys.resize(ngram_size, cache_size);
+	cache_keys.fill(-1); // clears cache
+	cache_values.resize(cache_size);
+	cache_lookups = cache_hits = 0;
     }
 
     double cache_hit_rate()
     {
-        return static_cast<double>(shared->cache_hits)/shared->cache_lookups;
+        return static_cast<double>(cache_hits)/cache_lookups;
     }
 
 };
