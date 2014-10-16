@@ -77,6 +77,8 @@ public:
     }
 
     const std::vector<std::string> &words() const { return m_words; }
+    
+    const boost::unordered_map<std::string, int>& get_idmap() const { return m_index; }
 };
 
 } // namespace nplm
