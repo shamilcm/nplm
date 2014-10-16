@@ -18,6 +18,7 @@ struct param
     std::string input_words_file;
     std::string output_words_file;
     std::string model_prefix;
+    std::string init_model;
 
     int ngram_size;
     int vocab_size;
