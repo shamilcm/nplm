@@ -442,7 +442,11 @@ int main(int argc, char** argv)
 
 		// Final forward propagation step (sparse)
 		start_timer(4);
-		prop.output_layer_node.param->fProp(prop.second_hidden_activation_node.fProp_matrix,
+                if (prop.skip_hidden)
+                    prop.output_layer_node.param->fProp(prop.first_hidden_activation_node.fProp_matrix,
+                                                    minibatch_samples, scores);
+                else
+                    prop.output_layer_node.param->fProp(prop.second_hidden_activation_node.fProp_matrix,
 						    minibatch_samples, scores);
 		stop_timer(4);
 
@@ -491,7 +495,10 @@ int main(int argc, char** argv)
 	    {
 	        ///// Standard log-likelihood
 	        start_timer(4);
-		prop.output_layer_node.param->fProp(prop.second_hidden_activation_node.fProp_matrix, scores);
+                if (prop.skip_hidden)
+                    prop.output_layer_node.param->fProp(prop.first_hidden_activation_node.fProp_matrix, scores);
+                else
+                    prop.output_layer_node.param->fProp(prop.second_hidden_activation_node.fProp_matrix, scores);
 		stop_timer(4);
 
 		double minibatch_log_likelihood;
@@ -566,7 +573,10 @@ int main(int argc, char** argv)
 
 		// Do full forward prop through output word embedding layer
 		start_timer(4);
-		prop_validation.output_layer_node.param->fProp(prop_validation.second_hidden_activation_node.fProp_matrix, scores);
+                if (prop_validation.skip_hidden)
+                    prop_validation.output_layer_node.param->fProp(prop_validation.first_hidden_activation_node.fProp_matrix, scores);
+                else
+                    prop_validation.output_layer_node.param->fProp(prop_validation.second_hidden_activation_node.fProp_matrix, scores);
 		stop_timer(4);
 
 		// And softmax and loss. Be careful of short minibatch

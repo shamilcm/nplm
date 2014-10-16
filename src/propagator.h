@@ -23,6 +23,7 @@ public:
     Node<Linear_layer> second_hidden_linear_node;
     Node<Activation_function> second_hidden_activation_node;
     Node<Output_word_embeddings> output_layer_node;
+    bool skip_hidden;
 
 public:
     propagator () : minibatch_size(0), pnn(0) { }
@@ -39,6 +40,7 @@ public:
 	output_layer_node(const_cast<Output_word_embeddings*>(&nn.output_layer), minibatch_size),
 	minibatch_size(minibatch_size)
     {
+        skip_hidden = (nn.num_hidden == 0);
     }
 
     // This must be called if the underlying model is resized.
@@ -82,12 +84,14 @@ public:
 	stop_timer(1);
     
 
+        if (!skip_hidden) {
 	start_timer(2);
 	second_hidden_linear_node.param->fProp(first_hidden_activation_node.fProp_matrix,
 					       second_hidden_linear_node.fProp_matrix);
 	second_hidden_activation_node.param->fProp(second_hidden_linear_node.fProp_matrix,
 						   second_hidden_activation_node.fProp_matrix);
 	stop_timer(2);
+        }
 
 	// The propagation stops here because the last layer is very expensive.
     }
@@ -106,9 +110,16 @@ public:
 	stop_timer(7);
 	
 	start_timer(8);
+        if (skip_hidden) {
+            output_layer_node.param->computeGradient(first_hidden_activation_node.fProp_matrix,
+                                                    output,
+                                                    learning_rate, momentum);
+        }
+        else {
 	output_layer_node.param->computeGradient(second_hidden_activation_node.fProp_matrix,
 						 output,
 						 learning_rate, momentum);
+        }
 	stop_timer(8);
 
 	bPropRest(data, learning_rate, momentum, L2_reg);
@@ -130,9 +141,16 @@ public:
 	
 
 	start_timer(8);
-	output_layer_node.param->computeGradient(second_hidden_activation_node.fProp_matrix,
-						 samples, weights,
-						 learning_rate, momentum);
+        if (skip_hidden) {
+            output_layer_node.param->computeGradient(first_hidden_activation_node.fProp_matrix,
+                                                    samples, weights,
+                                                    learning_rate, momentum);
+        }
+        else {
+            output_layer_node.param->computeGradient(second_hidden_activation_node.fProp_matrix,
+                                                    samples, weights,
+                                                    learning_rate, momentum);
+        }
 	stop_timer(8);
 
 	bPropRest(data, learning_rate, momentum, L2_reg);
@@ -145,33 +163,46 @@ private:
     {
 	// Second hidden layer
 
-        start_timer(9);
-	second_hidden_activation_node.param->bProp(output_layer_node.bProp_matrix,
-						   second_hidden_activation_node.bProp_matrix,
-						   second_hidden_linear_node.fProp_matrix,
-						   second_hidden_activation_node.fProp_matrix);
+        if (skip_hidden) {
+            start_timer(9);
+            first_hidden_activation_node.param->bProp(output_layer_node.bProp_matrix,
+                                                    first_hidden_activation_node.bProp_matrix,
+                                                    first_hidden_linear_node.fProp_matrix,
+                                                    first_hidden_activation_node.fProp_matrix);
 
-	second_hidden_linear_node.param->bProp(second_hidden_activation_node.bProp_matrix,
-					       second_hidden_linear_node.bProp_matrix);
-	stop_timer(9);
+            first_hidden_linear_node.param->bProp(first_hidden_activation_node.bProp_matrix,
+                                                first_hidden_linear_node.bProp_matrix);
+            stop_timer(9);
+        }
+        else {
+            start_timer(9);
+            second_hidden_activation_node.param->bProp(output_layer_node.bProp_matrix,
+                                                    second_hidden_activation_node.bProp_matrix,
+                                                    second_hidden_linear_node.fProp_matrix,
+                                                    second_hidden_activation_node.fProp_matrix);
 
-	start_timer(10);
-	second_hidden_linear_node.param->computeGradient(second_hidden_activation_node.bProp_matrix,
-							 first_hidden_activation_node.fProp_matrix,
-							 learning_rate, momentum, L2_reg);
-	stop_timer(10);
+            second_hidden_linear_node.param->bProp(second_hidden_activation_node.bProp_matrix,
+                                                second_hidden_linear_node.bProp_matrix);
+            stop_timer(9);
 
-	// First hidden layer
+            start_timer(10);
+            second_hidden_linear_node.param->computeGradient(second_hidden_activation_node.bProp_matrix,
+                                                            first_hidden_activation_node.fProp_matrix,
+                                                            learning_rate, momentum, L2_reg);
+            stop_timer(10);
 
-	start_timer(11);
-	first_hidden_activation_node.param->bProp(second_hidden_linear_node.bProp_matrix,
-						  first_hidden_activation_node.bProp_matrix,
-						  first_hidden_linear_node.fProp_matrix,
-						  first_hidden_activation_node.fProp_matrix);
+            // First hidden layer
 
-	first_hidden_linear_node.param->bProp(first_hidden_activation_node.bProp_matrix,
-					      first_hidden_linear_node.bProp_matrix);
-	stop_timer(11);
+            start_timer(11);
+            first_hidden_activation_node.param->bProp(second_hidden_linear_node.bProp_matrix,
+                                                    first_hidden_activation_node.bProp_matrix,
+                                                    first_hidden_linear_node.fProp_matrix,
+                                                    first_hidden_activation_node.fProp_matrix);
+
+            first_hidden_linear_node.param->bProp(first_hidden_activation_node.bProp_matrix,
+                                                first_hidden_linear_node.bProp_matrix);
+            stop_timer(11);
+        }
 	
 	start_timer(12);
 	first_hidden_linear_node.param->computeGradient(first_hidden_activation_node.bProp_matrix,

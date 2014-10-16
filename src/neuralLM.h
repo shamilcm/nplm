@@ -177,13 +177,19 @@ public:
 	if (normalization)
 	{
 	    Eigen::Matrix<double,Eigen::Dynamic,1> scores(shared->output_vocab.size());
-	    prop.output_layer_node.param->fProp(prop.second_hidden_activation_node.fProp_matrix, scores);
+            if (prop.skip_hidden)
+                prop.output_layer_node.param->fProp(prop.first_hidden_activation_node.fProp_matrix, scores);
+            else
+                prop.output_layer_node.param->fProp(prop.second_hidden_activation_node.fProp_matrix, scores);
 	    double logz = logsum(scores.col(0));
 	    log_prob = weight * (scores(output, 0) - logz);
 	}
 	else
 	{
-	    log_prob = weight * prop.output_layer_node.param->fProp(prop.second_hidden_activation_node.fProp_matrix, output, 0);
+            if (prop.skip_hidden)
+                log_prob = weight * prop.output_layer_node.param->fProp(prop.first_hidden_activation_node.fProp_matrix, output, 0);
+            else
+                log_prob = weight * prop.output_layer_node.param->fProp(prop.second_hidden_activation_node.fProp_matrix, output, 0);
 	}
 	stop_timer(3);
 
@@ -216,7 +222,10 @@ public:
 	if (normalization)
 	{
 	    Eigen::Matrix<double,Eigen::Dynamic,Eigen::Dynamic> scores(shared->output_vocab.size(), ngram.cols());
-	    prop.output_layer_node.param->fProp(prop.second_hidden_activation_node.fProp_matrix, scores);
+            if (prop.skip_hidden)
+                prop.output_layer_node.param->fProp(prop.first_hidden_activation_node.fProp_matrix, scores);
+            else
+                prop.output_layer_node.param->fProp(prop.second_hidden_activation_node.fProp_matrix, scores);
 
 	    // And softmax and loss
 	    Matrix<double,Dynamic,Dynamic> output_probs(shared->nn.output_vocab_size, ngram.cols());
@@ -233,7 +242,10 @@ public:
 	    for (int j=0; j<ngram.cols(); j++)
 	    {
 	        int output = ngram(ngram_size-1, j);
-	        log_probs(0, j) = weight * prop.output_layer_node.param->fProp(prop.second_hidden_activation_node.fProp_matrix, output, j);
+                if (prop.skip_hidden)
+                    log_probs(0, j) = weight * prop.output_layer_node.param->fProp(prop.first_hidden_activation_node.fProp_matrix, output, j);
+                else
+                    log_probs(0, j) = weight * prop.output_layer_node.param->fProp(prop.second_hidden_activation_node.fProp_matrix, output, j);
 	    }
 	}
     }

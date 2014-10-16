@@ -20,10 +20,18 @@ namespace nplm
         int output_embedding_dimension)
 {
     input_layer.resize(input_vocab_size, input_embedding_dimension, ngram_size-1);
-    first_hidden_linear.resize(num_hidden, input_embedding_dimension*(ngram_size-1));
-    first_hidden_activation.resize(num_hidden);
-    second_hidden_linear.resize(output_embedding_dimension, num_hidden);
-    second_hidden_activation.resize(output_embedding_dimension);
+    if (num_hidden == 0) {
+        first_hidden_linear.resize(output_embedding_dimension, input_embedding_dimension*(ngram_size-1));
+        first_hidden_activation.resize(output_embedding_dimension);
+        second_hidden_linear.resize(1,1);
+        second_hidden_activation.resize(1);
+    }
+    else {
+        first_hidden_linear.resize(num_hidden, input_embedding_dimension*(ngram_size-1));
+        first_hidden_activation.resize(num_hidden);
+        second_hidden_linear.resize(output_embedding_dimension, num_hidden);
+        second_hidden_activation.resize(output_embedding_dimension);
+    }
     output_layer.resize(output_vocab_size, output_embedding_dimension);
     this->ngram_size = ngram_size;
     this->input_vocab_size = input_vocab_size;
@@ -48,7 +56,12 @@ void model::premultiply()
     // we can multiply them into a single linear layer *if* we are not training
     int context_size = ngram_size-1;
     Matrix<double,Dynamic,Dynamic> U = first_hidden_linear.U;
-    first_hidden_linear.U.resize(num_hidden, input_vocab_size * context_size);
+    if (num_hidden == 0) {
+        first_hidden_linear.U.resize(output_embedding_dimension, input_vocab_size * context_size);
+    }
+    else {
+        first_hidden_linear.U.resize(num_hidden, input_vocab_size * context_size);
+    }
     for (int i=0; i<context_size; i++)
         first_hidden_linear.U.middleCols(i*input_vocab_size, input_vocab_size) = U.middleCols(i*input_embedding_dimension, input_embedding_dimension) * input_layer.W->transpose();
     input_layer.W->resize(1,1); // try to save some memory

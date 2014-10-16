@@ -101,7 +101,10 @@ int main (int argc, char *argv[])
 	prop.fProp(minibatch.topRows(myParam.ngram_size-1));
 
 	// Do full forward prop through output word embedding layer
-	prop.output_layer_node.param->fProp(prop.second_hidden_activation_node.fProp_matrix, scores);
+        if (prop.skip_hidden)
+            prop.output_layer_node.param->fProp(prop.first_hidden_activation_node.fProp_matrix, scores);
+        else
+            prop.output_layer_node.param->fProp(prop.second_hidden_activation_node.fProp_matrix, scores);
 
 	// And softmax and loss
 	double minibatch_log_likelihood;
