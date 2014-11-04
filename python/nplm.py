@@ -12,21 +12,31 @@ def diag_dot(a, b, out=None):
     return out
 
 class NeuralLM(object):
-    def __init__(self, ngram_size, n_vocab, input_embedding_dimension, n_hidden, output_embedding_dimension):
-        self.n_vocab = n_vocab
+    def __init__(self, ngram_size, input_vocab_size, output_vocab_size, input_embedding_dimension, num_hidden, output_embedding_dimension, activation_function):
+        self.input_vocab_size = input_vocab_size
+        self.output_vocab_size = output_vocab_size
         self.index_to_word = []
+        self.index_to_word_input = []
+        self.index_to_word_output = []
         self.word_to_index = {}
+        self.word_to_index_input = {}
+        self.word_to_index_output = {}
 
         self.ngram_size = ngram_size
         self.input_embedding_dimension = input_embedding_dimension
-        self.n_hidden = n_hidden
+        self.num_hidden = num_hidden
         self.output_embedding_dimension = output_embedding_dimension
+        self.activation_function = activation_function
 
-        self.input_embeddings = numpy.zeros((n_vocab,             input_embedding_dimension))
-        self.hidden1_weights  = numpy.zeros((n_hidden,            (ngram_size-1)*input_embedding_dimension))
-        self.hidden2_weights  = numpy.zeros((output_embedding_dimension, n_hidden))
-        self.output_weights   = numpy.zeros((n_vocab,             output_embedding_dimension))
-        self.output_biases    = numpy.zeros((n_vocab,             1))
+        self.input_embeddings = numpy.zeros((input_vocab_size,      input_embedding_dimension))
+        if not num_hidden:
+            self.hidden1_weights  = numpy.zeros((output_embedding_dimension,            (ngram_size-1)*input_embedding_dimension))
+            self.hidden2_weights  = numpy.zeros((1, 1))
+        else:
+            self.hidden1_weights  = numpy.zeros((num_hidden,            (ngram_size-1)*input_embedding_dimension))
+            self.hidden2_weights  = numpy.zeros((output_embedding_dimension, num_hidden))
+        self.output_weights   = numpy.zeros((output_vocab_size,     output_embedding_dimension))
+        self.output_biases    = numpy.zeros((output_vocab_size,     1))
 
     def initialize(self, r):
         def uniform(m):
@@ -40,7 +50,10 @@ class NeuralLM(object):
     def forward_prop(self, inputs, output=None, normalize=True):
         u = numpy.bmat([[self.input_embeddings.T * ui] for ui in inputs])
         h1 = numpy.maximum(0., self.hidden1_weights * u)
-        h2 = numpy.maximum(0., self.hidden2_weights * h1)
+        if not self.num_hidden:
+            h2 = h1
+        else:
+            h2 = numpy.maximum(0., self.hidden2_weights * h1)
 
         if output is None:
             o = self.output_weights * h2 + self.output_biases
@@ -75,16 +88,30 @@ class NeuralLM(object):
         outfile.write("\\config\n")
         outfile.write("version 1\n")
         outfile.write("ngram_size %d\n" % self.ngram_size)
-        outfile.write("n_vocab %d\n" % self.n_vocab)
+        outfile.write("input_vocab_size %d\n" % self.input_vocab_size)
+        outfile.write("output_vocab_size %d\n" % self.output_vocab_size)
         outfile.write("input_embedding_dimension %d\n" % self.input_embedding_dimension)
+        outfile.write("num_hidden %d\n" % self.num_hidden)
         outfile.write("output_embedding_dimension %d\n" % self.output_embedding_dimension)
-        outfile.write("n_hidden %d\n" % self.n_hidden)
+        outfile.write("activation_function %s\n" % self.activation_function)
         outfile.write("\n")
 
-        outfile.write("\\vocab\n")
-        for word in self.index_to_word:
-            outfile.write(word + "\n")
-        outfile.write("\n")
+        if self.index_to_word_input and self.index_to_word_output:
+            outfile.write("\\input_vocab\n")
+            for word in self.index_to_word_input:
+                outfile.write(word + "\n")
+            outfile.write("\n")
+
+            outfile.write("\\output_vocab\n")
+            for word in self.index_to_word_output:
+                outfile.write(word + "\n")
+            outfile.write("\n")
+
+        elif self.index_to_word:
+            outfile.write("\\vocab\n")
+            for word in self.index_to_word:
+                outfile.write(word + "\n")
+            outfile.write("\n")
 
         outfile.write("\\input_embeddings\n")
         write_matrix(self.input_embeddings)
@@ -151,10 +178,22 @@ class NeuralLM(object):
                     config[key] = value
 
                 m = NeuralLM(ngram_size=int(config['ngram_size']),
-                             n_vocab=int(config['n_vocab']),
+                             input_vocab_size=int(config['input_vocab_size']),
+                             output_vocab_size=int(config['output_vocab_size']),
                              input_embedding_dimension=int(config['input_embedding_dimension']),
-                             n_hidden=int(config['n_hidden']),
-                             output_embedding_dimension=int(config['output_embedding_dimension']))
+                             num_hidden=int(config['num_hidden']),
+                             output_embedding_dimension=int(config['output_embedding_dimension']),
+                             activation_function=config['activation_function'])
+
+            elif section == "\\input_vocab":
+                for line in lines:
+                    m.index_to_word_input.append(line)
+                m.word_to_index_input = dict((w,i) for (i,w) in enumerate(m.index_to_word_input))
+
+            elif section == "\\output_vocab":
+                for line in lines:
+                    m.index_to_word_output.append(line)
+                m.word_to_index_output = dict((w,i) for (i,w) in enumerate(m.index_to_word_output))
 
             elif section == "\\vocab":
                 for line in lines:
@@ -162,15 +201,21 @@ class NeuralLM(object):
                 m.word_to_index = dict((w,i) for (i,w) in enumerate(m.index_to_word))
 
             elif section == "\\input_embeddings":
-                read_matrix(lines, m.n_vocab, m.input_embedding_dimension, out=m.input_embeddings)
+                read_matrix(lines, m.input_vocab_size, m.input_embedding_dimension, out=m.input_embeddings)
             elif section == "\\hidden_weights 1":
-                read_matrix(lines, m.n_hidden, (m.ngram_size-1)*m.input_embedding_dimension, out=m.hidden1_weights)
+                if not m.num_hidden:
+                    read_matrix(lines, m.output_embedding_dimension, (m.ngram_size-1)*m.input_embedding_dimension, out=m.hidden1_weights)
+                else:
+                    read_matrix(lines, m.num_hidden, (m.ngram_size-1)*m.input_embedding_dimension, out=m.hidden1_weights)
             elif section == "\\hidden_weights 2":
-                read_matrix(lines, m.output_embedding_dimension, m.n_hidden, out=m.hidden2_weights)
+                if not m.num_hidden:
+                    read_matrix(lines, 1, 1, out=m.hidden2_weights)
+                else:
+                    read_matrix(lines, m.output_embedding_dimension, m.num_hidden, out=m.hidden2_weights)
             elif section == "\\output_weights":
-                read_matrix(lines, m.n_vocab, m.output_embedding_dimension, out=m.output_weights)
+                read_matrix(lines, m.output_vocab_size, m.output_embedding_dimension, out=m.output_weights)
             elif section == "\\output_biases":
-                read_matrix(lines, m.n_vocab, 1, out=m.output_biases)
+                read_matrix(lines, m.output_vocab_size, 1, out=m.output_biases)
         return m
 
     def make_data(self, ngrams):
@@ -184,5 +229,6 @@ class NeuralLM(object):
                 rows[j].append(w)
                 cols[j].append(i)
                 values[j].append(1)
-        data = [scipy.sparse.csc_matrix((values[j], (rows[j], cols[j])), shape=(self.n_vocab, len(ngrams))) for j in xrange(self.ngram_size)]
+        data = [scipy.sparse.csc_matrix((values[j], (rows[j], cols[j])), shape=(self.input_vocab_size, len(ngrams))) for j in xrange(self.ngram_size-1)]
+        data.append(scipy.sparse.csc_matrix((values[-1], (rows[-1], cols[-1])), shape=(self.output_vocab_size, len(ngrams))))
         return data
