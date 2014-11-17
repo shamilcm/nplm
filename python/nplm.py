@@ -31,10 +31,14 @@ class NeuralLM(object):
         self.input_embeddings = numpy.zeros((input_vocab_size,      input_embedding_dimension))
         if not num_hidden:
             self.hidden1_weights  = numpy.zeros((output_embedding_dimension,            (ngram_size-1)*input_embedding_dimension))
+            self.hidden1_biases  = numpy.zeros((output_embedding_dimension,             1))
             self.hidden2_weights  = numpy.zeros((1, 1))
+            self.hidden2_biases  = numpy.zeros((1, 1))
         else:
             self.hidden1_weights  = numpy.zeros((num_hidden,            (ngram_size-1)*input_embedding_dimension))
+            self.hidden1_biases  = numpy.zeros((num_hidden,            1))
             self.hidden2_weights  = numpy.zeros((output_embedding_dimension, num_hidden))
+            self.hidden2_biases  = numpy.zeros((output_embedding_dimension, 1))
         self.output_weights   = numpy.zeros((output_vocab_size,     output_embedding_dimension))
         self.output_biases    = numpy.zeros((output_vocab_size,     1))
 
@@ -43,17 +47,19 @@ class NeuralLM(object):
             m[:,:] = numpy.random.uniform(-r, r, m.shape)
         uniform(self.input_embeddings)
         uniform(self.hidden1_weights)
+        uniform(self.hidden1_biases)
         uniform(self.hidden2_weights)
+        uniform(self.hidden2_biases)
         uniform(self.output_weights)
         uniform(self.output_biases)
 
     def forward_prop(self, inputs, output=None, normalize=True):
         u = numpy.bmat([[self.input_embeddings.T * ui] for ui in inputs])
-        h1 = numpy.maximum(0., self.hidden1_weights * u)
+        h1 = numpy.maximum(0., self.hidden1_weights * u + self.hidden1_biases)
         if not self.num_hidden:
             h2 = h1
         else:
-            h2 = numpy.maximum(0., self.hidden2_weights * h1)
+            h2 = numpy.maximum(0., self.hidden2_weights * h1 + self.hidden2_biases)
 
         if output is None:
             o = self.output_weights * h2 + self.output_biases
@@ -119,8 +125,14 @@ class NeuralLM(object):
         outfile.write("\\hidden_weights 1\n")
         write_matrix(self.hidden1_weights)
 
+        outfile.write("\\hidden_biases 1\n")
+        write_matrix(self.hidden1_biases)
+
         outfile.write("\\hidden_weights 2\n")
         write_matrix(self.hidden2_weights)
+
+        outfile.write("\\hidden_biases 2\n")
+        write_matrix(self.hidden2_biases)
 
         outfile.write("\\output_weights\n")
         write_matrix(self.output_weights)
@@ -207,11 +219,21 @@ class NeuralLM(object):
                     read_matrix(lines, m.output_embedding_dimension, (m.ngram_size-1)*m.input_embedding_dimension, out=m.hidden1_weights)
                 else:
                     read_matrix(lines, m.num_hidden, (m.ngram_size-1)*m.input_embedding_dimension, out=m.hidden1_weights)
+            elif section == "\\hidden_biases 1":
+                if not m.num_hidden:
+                    read_matrix(lines, m.output_embedding_dimension, 1, out=m.hidden1_biases)
+                else:
+                    read_matrix(lines, m.num_hidden, 1, out=m.hidden1_biases)
             elif section == "\\hidden_weights 2":
                 if not m.num_hidden:
                     read_matrix(lines, 1, 1, out=m.hidden2_weights)
                 else:
                     read_matrix(lines, m.output_embedding_dimension, m.num_hidden, out=m.hidden2_weights)
+            elif section == "\\hidden_biases 2":
+                if not m.num_hidden:
+                    read_matrix(lines, 1, 1, out=m.hidden2_biases)
+                else:
+                    read_matrix(lines, m.output_embedding_dimension, 1, out=m.hidden2_biases)
             elif section == "\\output_weights":
                 read_matrix(lines, m.output_vocab_size, m.output_embedding_dimension, out=m.output_weights)
             elif section == "\\output_biases":
