@@ -15,7 +15,7 @@
 #include <boost/chrono.hpp>
 #endif
 
-#include <Eigen/Dense>
+#include <../3rdparty/Eigen/Dense>
 
 #include "maybe_omp.h"
 
