@@ -2,7 +2,7 @@ python/nplm.pyc
 src/*.o
 src/*.a
 src/shared/*.o
-src/libneuralLM.so
+src/libnplm.so
 src/prepareNeuralLM
 src/prepareNeuralTM
 src/testNeuralLM

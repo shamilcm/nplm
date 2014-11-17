@@ -1,8 +1,7 @@
 ### Compilation options.
 
 # C++ compiler. Tested with g++ and Intel icpc.
-#CXX=/usr/bin/g++
-CXX=/opt/local/bin/g++-mp-4.7
+CXX=/usr/bin/g++
 #CXX=icpc
 
 # Compiler options. Note that -DEIGEN_NO_DEBUG is essential for good performance!
@@ -21,8 +20,6 @@ OS:=$(shell uname -s)
 
 # Set this to the root directory of Boost (should have a subdirectory named boost):
 
-#BOOST=/usr/usc/boost/1.51.0
-#BOOST=/usr
 BOOST=/opt/local
 # Where to find Boost header files
 BOOST_INC=$(BOOST)/include
@@ -59,7 +56,7 @@ TCLAP=../3rdparty/tclap/include
 BOOST_LIB=$(BOOST)/lib
 # On some systems, a suffix is appended for the multithreaded version.
 #BOOST_LIB_SUFFIX=
-BOOST_LIB_SUFFIX=-mt
+# BOOST_LIB_SUFFIX=-mt
 
 BOOST_CFLAGS=-I$(BOOST_INC)
 BOOST_LDFLAGS=
