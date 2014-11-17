@@ -240,7 +240,7 @@ void writeMmapNgrams(const string &input_filename,
             if (i %500000 == 0) {
               cerr<<"Shuffled "<<num_tokens-1<<" instances...";
             }
-            data_size_t j = uniform_int_distribution<data_size_t>(0, i-1)(rng);
+            data_size_t j = boost::random::uniform_int_distribution<data_size_t>(0, i-1)(rng);
             for (int k=0;k<ngram_size;k++) {
               int temp_val = temp.at(i*ngram_size+k);
               temp.at(i*ngram_size+k) =
@@ -263,7 +263,7 @@ void writeMmapNgrams(const string &input_filename,
         if (i %500000 == 0) {
           cerr<<"Shuffled "<<num_tokens-1<<" instances...";
         }
-        data_size_t j = uniform_int_distribution<data_size_t>(0, i-1)(rng);
+        data_size_t j = boost::random::uniform_int_distribution<data_size_t>(0, i-1)(rng);
         for (int k=0;k<ngram_size;k++) {
           int temp_val = mMapVec->at(i*ngram_size+k);
           mMapVec->at(i*ngram_size+k) =
