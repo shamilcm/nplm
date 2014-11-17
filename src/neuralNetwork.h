@@ -181,6 +181,14 @@ public:
         return static_cast<double>(cache_hits)/cache_lookups;
     }
 
+    void premultiply()
+    {
+        if (!m->premultiplied)
+        {
+            m->premultiply();
+        }
+    }
+
 };
 
 } // namespace nplm
