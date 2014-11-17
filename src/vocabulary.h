@@ -19,6 +19,7 @@ class vocabulary {
     std::vector<std::string> m_words;
     boost::unordered_map<std::string, int> m_index;
     int unk;
+
 public:
     vocabulary() 
     { 
@@ -40,7 +41,17 @@ public:
 	if (pos != m_index.end())
 	    return pos->second;
 	else
-	  return unk;
+	    return unk;
+    }
+
+    // lookup word using custom unknown-word id
+    int lookup_word(const std::string &word, int unk) const
+    {
+        boost::unordered_map<std::string, int>::const_iterator pos = m_index.find(word);
+	if (pos != m_index.end())
+	    return pos->second;
+	else
+	    return unk;
     }
 
     int insert_word(const std::string &word)
@@ -77,8 +88,6 @@ public:
     }
 
     const std::vector<std::string> &words() const { return m_words; }
-    
-    const boost::unordered_map<std::string, int>& get_idmap() const { return m_index; }
 };
 
 } // namespace nplm

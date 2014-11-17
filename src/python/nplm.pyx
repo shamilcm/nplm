@@ -6,7 +6,7 @@ cdef class NeuralLM:
         self.thisptr.set_normalization(normalization)
         self.thisptr.set_log_base(10.)
         if type(map_digits) is str and len(map_digits) == 1:
-            self.thisptr.set_map_digits(map_digits)
+            self.thisptr.set_map_digits((<char *>map_digits)[0])
         if cache_size:
             self.thisptr.set_cache(cache_size)
 

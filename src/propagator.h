@@ -14,7 +14,7 @@ using Eigen::Dynamic;
 
 class propagator {
     int minibatch_size;
-    const model *pnn;
+    model *pnn;
 
 public:
     Node<Input_word_embeddings> input_layer_node;
@@ -23,24 +23,21 @@ public:
     Node<Linear_layer> second_hidden_linear_node;
     Node<Activation_function> second_hidden_activation_node;
     Node<Output_word_embeddings> output_layer_node;
-    bool skip_hidden;
 
 public:
     propagator () : minibatch_size(0), pnn(0) { }
 
-    propagator (const model &nn, int minibatch_size)
+    propagator (model &nn, int minibatch_size)
       :
         pnn(&nn),
-        // These are const for purposes of querying.  The issue is that it's also used non-const for purposes of training, so X* only takes mutable classes.
-        input_layer_node(const_cast<Input_word_embeddings*>(&nn.input_layer), minibatch_size),
-	first_hidden_linear_node(const_cast<Linear_layer*>(&nn.first_hidden_linear), minibatch_size),
-	first_hidden_activation_node(const_cast<Activation_function*>(&nn.first_hidden_activation), minibatch_size),
-        second_hidden_linear_node(const_cast<Linear_layer*>(&nn.second_hidden_linear), minibatch_size),
-	second_hidden_activation_node(const_cast<Activation_function*>(&nn.second_hidden_activation), minibatch_size),
-	output_layer_node(const_cast<Output_word_embeddings*>(&nn.output_layer), minibatch_size),
+        input_layer_node(&nn.input_layer, minibatch_size),
+	first_hidden_linear_node(&nn.first_hidden_linear, minibatch_size),
+	first_hidden_activation_node(&nn.first_hidden_activation, minibatch_size),
+        second_hidden_linear_node(&nn.second_hidden_linear, minibatch_size),
+	second_hidden_activation_node(&nn.second_hidden_activation, minibatch_size),
+	output_layer_node(&nn.output_layer, minibatch_size),
 	minibatch_size(minibatch_size)
     {
-        skip_hidden = (nn.num_hidden == 0);
     }
 
     // This must be called if the underlying model is resized.
@@ -81,17 +78,17 @@ public:
 	}
 	first_hidden_activation_node.param->fProp(first_hidden_linear_node.fProp_matrix,
 						  first_hidden_activation_node.fProp_matrix);
+  //std::cerr<<"in fprop first hidden activation node fprop is "<<first_hidden_activation_node.fProp_matrix<<std::endl;
+  //std::getchar();
 	stop_timer(1);
     
 
-        if (!skip_hidden) {
 	start_timer(2);
 	second_hidden_linear_node.param->fProp(first_hidden_activation_node.fProp_matrix,
 					       second_hidden_linear_node.fProp_matrix);
 	second_hidden_activation_node.param->fProp(second_hidden_linear_node.fProp_matrix,
 						   second_hidden_activation_node.fProp_matrix);
 	stop_timer(2);
-        }
 
 	// The propagation stops here because the last layer is very expensive.
     }
@@ -100,7 +97,12 @@ public:
     template <typename DerivedIn, typename DerivedOut>
     void bProp(const MatrixBase<DerivedIn> &data,
 	       const MatrixBase<DerivedOut> &output,
-	       double learning_rate, double momentum, double L2_reg) 
+	       double learning_rate,
+         double momentum,
+         double L2_reg,
+         std::string &parameter_update,
+         double conditioning_constant,
+         double decay) 
     {
         // Output embedding layer
 
@@ -110,113 +112,225 @@ public:
 	stop_timer(7);
 	
 	start_timer(8);
-        if (skip_hidden) {
-            output_layer_node.param->computeGradient(first_hidden_activation_node.fProp_matrix,
-                                                    output,
-                                                    learning_rate, momentum);
-        }
-        else {
-	output_layer_node.param->computeGradient(second_hidden_activation_node.fProp_matrix,
-						 output,
-						 learning_rate, momentum);
-        }
+  if (parameter_update == "SGD") {
+    output_layer_node.param->computeGradient(second_hidden_activation_node.fProp_matrix,
+               output,
+               learning_rate,
+               momentum);
+  } else if (parameter_update == "ADA") {
+    output_layer_node.param->computeGradientAdagrad(second_hidden_activation_node.fProp_matrix,
+               output,
+               learning_rate);
+  } else if (parameter_update == "ADAD") {
+    //std::cerr<<"Adadelta gradient"<<endl;
+    int current_minibatch_size = second_hidden_activation_node.fProp_matrix.cols();
+    output_layer_node.param->computeGradientAdadelta(second_hidden_activation_node.fProp_matrix,
+               output,
+               1.0/current_minibatch_size,
+               conditioning_constant,
+               decay);
+  } else {
+    std::cerr<<"Parameter update :"<<parameter_update<<" is unrecognized"<<std::endl;
+  }
 	stop_timer(8);
 
-	bPropRest(data, learning_rate, momentum, L2_reg);
+	bPropRest(data, 
+      learning_rate,
+      momentum,
+      L2_reg,
+      parameter_update,
+      conditioning_constant,
+      decay);
     }
 
     // Sparse version (for NCE log-likelihood)
     template <typename DerivedIn, typename DerivedOutI, typename DerivedOutV>
     void bProp(const MatrixBase<DerivedIn> &data,
-	       const MatrixBase<DerivedOutI> &samples, const MatrixBase<DerivedOutV> &weights,
-	       double learning_rate, double momentum, double L2_reg) 
+	       const MatrixBase<DerivedOutI> &samples,
+         const MatrixBase<DerivedOutV> &weights,
+	       double learning_rate,
+         double momentum,
+         double L2_reg,
+         std::string &parameter_update,
+         double conditioning_constant,
+         double decay) 
     {
 
         // Output embedding layer
 
         start_timer(7);
-        output_layer_node.param->bProp(samples, weights, 
-				       output_layer_node.bProp_matrix);
+        output_layer_node.param->bProp(samples,
+            weights, 
+				    output_layer_node.bProp_matrix);
 	stop_timer(7);
 	
 
 	start_timer(8);
-        if (skip_hidden) {
-            output_layer_node.param->computeGradient(first_hidden_activation_node.fProp_matrix,
-                                                    samples, weights,
-                                                    learning_rate, momentum);
-        }
-        else {
-            output_layer_node.param->computeGradient(second_hidden_activation_node.fProp_matrix,
-                                                    samples, weights,
-                                                    learning_rate, momentum);
-        }
+  if (parameter_update == "SGD") {
+    output_layer_node.param->computeGradient(second_hidden_activation_node.fProp_matrix,
+               samples,
+               weights,
+               learning_rate,
+               momentum);
+  } else if (parameter_update == "ADA") {
+    output_layer_node.param->computeGradientAdagrad(second_hidden_activation_node.fProp_matrix,
+               samples,
+               weights,
+               learning_rate);
+  } else if (parameter_update == "ADAD") {
+    int current_minibatch_size = second_hidden_activation_node.fProp_matrix.cols();
+    //std::cerr<<"Adadelta gradient"<<endl;
+    output_layer_node.param->computeGradientAdadelta(second_hidden_activation_node.fProp_matrix,
+               samples,
+               weights,
+               1.0/current_minibatch_size,
+               conditioning_constant,
+               decay);
+  } else {
+    std::cerr<<"Parameter update :"<<parameter_update<<" is unrecognized"<<std::endl;
+  }
+
 	stop_timer(8);
 
-	bPropRest(data, learning_rate, momentum, L2_reg);
+	bPropRest(data,
+      learning_rate,
+      momentum,
+      L2_reg,
+      parameter_update,
+      conditioning_constant,
+      decay);
     }
 
 private:
     template <typename DerivedIn>
     void bPropRest(const MatrixBase<DerivedIn> &data,
-		   double learning_rate, double momentum, double L2_reg) 
+		   double learning_rate, double momentum, double L2_reg,
+       std::string &parameter_update,
+       double conditioning_constant,
+       double decay) 
     {
 	// Second hidden layer
 
-        if (skip_hidden) {
-            start_timer(9);
-            first_hidden_activation_node.param->bProp(output_layer_node.bProp_matrix,
-                                                    first_hidden_activation_node.bProp_matrix,
-                                                    first_hidden_linear_node.fProp_matrix,
-                                                    first_hidden_activation_node.fProp_matrix);
 
-            first_hidden_linear_node.param->bProp(first_hidden_activation_node.bProp_matrix,
-                                                first_hidden_linear_node.bProp_matrix);
-            stop_timer(9);
-        }
-        else {
-            start_timer(9);
-            second_hidden_activation_node.param->bProp(output_layer_node.bProp_matrix,
-                                                    second_hidden_activation_node.bProp_matrix,
-                                                    second_hidden_linear_node.fProp_matrix,
-                                                    second_hidden_activation_node.fProp_matrix);
+  
+  // All the compute gradient functions are together and the backprop
+  // functions are together
+  ////////BACKPROP////////////
+        start_timer(9);
+  second_hidden_activation_node.param->bProp(output_layer_node.bProp_matrix,
+                                           second_hidden_activation_node.bProp_matrix,
+                                           second_hidden_linear_node.fProp_matrix,
+                                           second_hidden_activation_node.fProp_matrix);
 
-            second_hidden_linear_node.param->bProp(second_hidden_activation_node.bProp_matrix,
-                                                second_hidden_linear_node.bProp_matrix);
-            stop_timer(9);
 
-            start_timer(10);
-            second_hidden_linear_node.param->computeGradient(second_hidden_activation_node.bProp_matrix,
-                                                            first_hidden_activation_node.fProp_matrix,
-                                                            learning_rate, momentum, L2_reg);
-            stop_timer(10);
+	second_hidden_linear_node.param->bProp(second_hidden_activation_node.bProp_matrix,
+					       second_hidden_linear_node.bProp_matrix);
+	stop_timer(9);
 
-            // First hidden layer
+	start_timer(11);
+	first_hidden_activation_node.param->bProp(second_hidden_linear_node.bProp_matrix,
+						  first_hidden_activation_node.bProp_matrix,
+						  first_hidden_linear_node.fProp_matrix,
+						  first_hidden_activation_node.fProp_matrix);
 
-            start_timer(11);
-            first_hidden_activation_node.param->bProp(second_hidden_linear_node.bProp_matrix,
-                                                    first_hidden_activation_node.bProp_matrix,
-                                                    first_hidden_linear_node.fProp_matrix,
-                                                    first_hidden_activation_node.fProp_matrix);
+  first_hidden_linear_node.param->bProp(first_hidden_activation_node.bProp_matrix,
+					      first_hidden_linear_node.bProp_matrix);
+	stop_timer(11);
+  //std::cerr<<"First hidden layer node backprop matrix is"<<first_hidden_linear_node.bProp_matrix<<std::endl;
+  //std::getchar();
+  ////COMPUTE GRADIENT/////////
+  if (parameter_update == "SGD") {
+    start_timer(10);
+    second_hidden_linear_node.param->computeGradient(second_hidden_activation_node.bProp_matrix,
+                 first_hidden_activation_node.fProp_matrix,
+                 learning_rate,
+                 momentum,
+                 L2_reg);
+    stop_timer(10);
 
-            first_hidden_linear_node.param->bProp(first_hidden_activation_node.bProp_matrix,
-                                                first_hidden_linear_node.bProp_matrix);
-            stop_timer(11);
-        }
-	
-	start_timer(12);
-	first_hidden_linear_node.param->computeGradient(first_hidden_activation_node.bProp_matrix,
-							input_layer_node.fProp_matrix,
-							learning_rate, momentum, L2_reg);
-	stop_timer(12);
+    // First hidden layer
 
-	// Input word embeddings
-	
-	start_timer(13);
-	input_layer_node.param->computeGradient(first_hidden_linear_node.bProp_matrix,
-						data,
-						learning_rate, momentum, L2_reg);
-	stop_timer(13);
+    
+    start_timer(12);
+    first_hidden_linear_node.param->computeGradient(first_hidden_activation_node.bProp_matrix,
+                input_layer_node.fProp_matrix,
+                learning_rate, momentum, L2_reg);
+    stop_timer(12);
+
+    // Input word embeddings
+    
+    start_timer(13);
+    input_layer_node.param->computeGradient(first_hidden_linear_node.bProp_matrix,
+              data,
+              learning_rate, momentum, L2_reg);
+    stop_timer(13);
+  } else if (parameter_update == "ADA") {
+    start_timer(10);
+    second_hidden_linear_node.param->computeGradientAdagrad(second_hidden_activation_node.bProp_matrix,
+                 first_hidden_activation_node.fProp_matrix,
+                 learning_rate,
+                 L2_reg);
+    stop_timer(10);
+
+    // First hidden layer
+
+    
+    start_timer(12);
+    first_hidden_linear_node.param->computeGradientAdagrad(first_hidden_activation_node.bProp_matrix,
+                input_layer_node.fProp_matrix,
+                learning_rate,
+                L2_reg);
+    stop_timer(12);
+
+    // Input word embeddings
+     
+    start_timer(13);
+    input_layer_node.param->computeGradientAdagrad(first_hidden_linear_node.bProp_matrix,
+              data,
+              learning_rate, 
+              L2_reg);
+    stop_timer(13);
+  } else if (parameter_update == "ADAD") {
+    int current_minibatch_size = first_hidden_activation_node.fProp_matrix.cols();
+    //std::cerr<<"Adadelta gradient"<<endl;
+    start_timer(10);
+    second_hidden_linear_node.param->computeGradientAdadelta(second_hidden_activation_node.bProp_matrix,
+                 first_hidden_activation_node.fProp_matrix,
+                 1.0/current_minibatch_size,
+                 L2_reg,
+                 conditioning_constant,
+                 decay);
+    stop_timer(10);
+    //std::cerr<<"Finished gradient for second hidden linear layer"<<std::endl;
+
+    // First hidden layer
+
+    
+    start_timer(12);
+    first_hidden_linear_node.param->computeGradientAdadelta(first_hidden_activation_node.bProp_matrix,
+                input_layer_node.fProp_matrix,
+                1.0/current_minibatch_size,
+                L2_reg,
+                conditioning_constant,
+                decay);
+    stop_timer(12);
+
+    //std::cerr<<"Finished gradient for first hidden linear layer"<<std::endl;
+    // Input word embeddings
+     
+    start_timer(13);
+    input_layer_node.param->computeGradientAdadelta(first_hidden_linear_node.bProp_matrix,
+              data,
+              1.0/current_minibatch_size, 
+              L2_reg,
+              conditioning_constant,
+              decay);
+    stop_timer(13);
+  
+    //std::cerr<<"Finished gradient for first input layer"<<std::endl;
+  } else {
+    std::cerr<<"Parameter update :"<<parameter_update<<" is unrecognized"<<std::endl;
+  }
 
     }
 };
@@ -224,3 +338,4 @@ private:
 } // namespace nplm
 
 #endif
+

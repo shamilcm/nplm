@@ -15,7 +15,7 @@
 #include <boost/chrono.hpp>
 #endif
 
-#include "../3rdparty/Eigen/Dense"
+#include <Eigen/Dense>
 
 #include "maybe_omp.h"
 
@@ -43,7 +43,39 @@ void writeWordsFile(const std::vector<std::string> &words, std::ofstream &file);
 void writeWordsFile(const std::vector<std::string> &words, const std::string &filename);
 void readDataFile(const std::string &filename, int &ngram_size, std::vector<int> &data, int minibatch_size=0);
 void readUnigramProbs(const std::string &unigram_probs_file, std::vector<double> &unigram_probs);
-void readSentFile(const std::string &file, std::vector<std::vector<std::string> > &sentences);
+void readWeightsFile(std::ifstream &TRAININ, std::vector<float> &weights);
+//template <typename T> readSentFile(const std::string &file, T &sentences);
+
+
+template <typename T>
+void readSentFile(const std::string &file, T &sentences)
+{
+  std::cerr << "Reading sentences from: " << file << std::endl;
+
+  std::ifstream TRAININ;
+  TRAININ.open(file.c_str());
+  if (! TRAININ)
+  {
+    std::cerr << "Error: can't read from file " << file<< std::endl;
+    exit(-1);
+  }
+
+  std::string line;
+  while (getline(TRAININ, line))
+  {
+    std::vector<std::string> words;
+    splitBySpace(line, words);
+    sentences.push_back(words);
+  }
+
+  TRAININ.close();
+}
+
+inline void intgerize(std::vector<std::string> &ngram,std::vector<int> &int_ngram){
+        int ngram_size = ngram.size();
+        for (int i=0;i<ngram_size;i++)
+        int_ngram.push_back(boost::lexical_cast<int>(ngram[i]));
+}
 
 // Functions that take non-const matrices as arguments
 // are supposed to declare them const and then use this
@@ -82,6 +114,34 @@ void initMatrix(boost::random::mt19937 &engine,
         }
     }
 }
+
+template <typename Derived>
+void initBias(boost::random::mt19937 &engine,
+		const Eigen::MatrixBase<Derived> &p_const,
+		bool init_normal, double range)
+{
+    UNCONST(Derived, p_const, p);
+    if (init_normal == 0)
+     // initialize with uniform distribution in [-range, range]
+    {
+        boost::random::uniform_real_distribution<> unif_real(-range, range); 
+        for (int i = 0; i < p.size(); i++)
+        {
+            p(i) = unif_real(engine);    
+        }
+
+    }
+    else 
+      // initialize with gaussian distribution with mean 0 and stdev range
+    {
+        boost::random::normal_distribution<double> unif_normal(0., range);
+        for (int i = 0; i < p.size(); i++)
+        {
+            p(i) = unif_normal(engine);    
+        }
+    }
+}
+
 
 template <typename Derived>
 void readMatrix(std::ifstream &TRAININ, Eigen::MatrixBase<Derived> &param_const)

@@ -2,6 +2,8 @@
 #include <fstream>
 #include <iomanip>
 #include <cmath>
+#include <deque>
+#include <vector>
 
 #include <boost/unordered_map.hpp> 
 #include <boost/algorithm/string.hpp>
@@ -32,6 +34,21 @@ void splitBySpace(const std::string &line, std::vector<std::string> &items)
 	return;
     }
     boost::split(items, copy, boost::is_any_of(" \t"), boost::token_compress_on);
+}
+
+void readWeightsFile(ifstream &TRAININ, vector<float> &weights) {
+  string line;
+  while (getline(TRAININ, line) && line != "")
+  {
+    vector<string> items;
+    splitBySpace(line, items);
+    if (items.size() != 1)
+    {
+        cerr << "Error: weights file should have only one weight per line" << endl;
+        exit(-1);
+    }
+    weights.push_back(boost::lexical_cast<float>(items[0]));
+  }
 }
 
 void readWordsFile(ifstream &TRAININ, vector<string> &word_list)
@@ -87,28 +104,6 @@ void writeWordsFile(const vector<string> &words, const string &filename)
     OUT.close();
 }
 
-void readSentFile(const string &file, vector<vector<string> > &sentences)
-{
-  cerr << "Reading sentences from: " << file << endl;
-
-  ifstream TRAININ;
-  TRAININ.open(file.c_str());
-  if (! TRAININ)
-  {
-    cerr << "Error: can't read from file " << file<< endl;
-    exit(-1);
-  }
-
-  string line;
-  while (getline(TRAININ, line))
-  {
-    vector<string> words;
-    splitBySpace(line, words);
-    sentences.push_back(words);
-  }
-
-  TRAININ.close();
-}
 
 // Read a data file of unknown size into a flat vector<int>.
 // If this takes too much memory, we should create a vector of minibatches.
@@ -193,8 +188,7 @@ int setup_threads(int n_threads)
     Eigen::initParallel();
     Eigen::setNbThreads(n_threads);
 
-    #ifdef __INTEL_MKL__
-    /*
+    #ifdef MKL_SINGLE
     // Set the threading layer to match the compiler.
     // This lets MKL automatically go single-threaded in parallel regions.
     #ifdef __INTEL_COMPILER
@@ -202,7 +196,6 @@ int setup_threads(int n_threads)
     #elif defined __GNUC__
     mkl_set_threading_layer(MKL_THREADING_GNU);
     #endif
-    */
     mkl_set_num_threads(n_threads);
     #endif
     #endif

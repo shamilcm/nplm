@@ -74,7 +74,10 @@ public:
     void initialize(boost::random::mt19937 &init_engine,
         bool init_normal,
         double init_range,
-        double init_bias);
+        double init_bias,
+        string &parameter_udpate,
+        double adagrad_epsilon);
+
     void set_activation_function(activation_function_type f)
     {
         activation_function = f;
@@ -90,9 +93,11 @@ public:
     // a better solution is needed
 
     void read(const std::string &filename);
+    void read(const std::string &filename, std::vector<std::string> &words);
     void read(const std::string &filename, std::vector<std::string> &input_words, std::vector<std::string> &output_words);
-    void write(const std::string &filename, const std::vector<std::string> &input_words, const std::vector<std::string> &output_words);
     void write(const std::string &filename);
+    void write(const std::string &filename, const std::vector<std::string> &words);
+    void write(const std::string &filename, const std::vector<std::string> &input_words, const std::vector<std::string> &output_words);
 
  private:
     void readConfig(std::ifstream &config_file);

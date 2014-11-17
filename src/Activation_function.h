@@ -3,7 +3,7 @@
 
 #include <cmath>
 #include <string>
-#include "../3rdparty/Eigen/Dense"
+#include <Eigen/Dense>
 
 #include "util.h"
 
@@ -68,7 +68,6 @@ struct drectifier_functor {
 
 class Activation_function
 {
-    private:
         int size;
 	activation_function_type f;
 
@@ -99,8 +98,10 @@ class Activation_function
         }
 
         template <typename DerivedGOut, typename DerivedGIn, typename DerivedIn, typename DerivedOut>
-	void bProp(const MatrixBase<DerivedGOut> &input, MatrixBase<DerivedGIn> &output,
-		   const MatrixBase<DerivedIn> &finput, const MatrixBase<DerivedOut> &foutput) const
+	void bProp(const MatrixBase<DerivedGOut> &input, 
+      MatrixBase<DerivedGIn> &output,
+		   const MatrixBase<DerivedIn> &finput,
+       const MatrixBase<DerivedOut> &foutput) const
         {
 	    UNCONST(DerivedGIn, output, my_output);
 

@@ -12,26 +12,18 @@ using namespace boost::random;
 namespace nplm
 {
 
-    void model::resize(int ngram_size,
-        int input_vocab_size,
-        int output_vocab_size,
-        int input_embedding_dimension,
-        int num_hidden,
-        int output_embedding_dimension)
+void model::resize(int ngram_size,
+    int input_vocab_size,
+    int output_vocab_size,
+    int input_embedding_dimension,
+    int num_hidden,
+    int output_embedding_dimension)
 {
     input_layer.resize(input_vocab_size, input_embedding_dimension, ngram_size-1);
-    if (num_hidden == 0) {
-        first_hidden_linear.resize(output_embedding_dimension, input_embedding_dimension*(ngram_size-1));
-        first_hidden_activation.resize(output_embedding_dimension);
-        second_hidden_linear.resize(1,1);
-        second_hidden_activation.resize(1);
-    }
-    else {
-        first_hidden_linear.resize(num_hidden, input_embedding_dimension*(ngram_size-1));
-        first_hidden_activation.resize(num_hidden);
-        second_hidden_linear.resize(output_embedding_dimension, num_hidden);
-        second_hidden_activation.resize(output_embedding_dimension);
-    }
+    first_hidden_linear.resize(num_hidden, input_embedding_dimension*(ngram_size-1));
+    first_hidden_activation.resize(num_hidden);
+    second_hidden_linear.resize(output_embedding_dimension, num_hidden);
+    second_hidden_activation.resize(output_embedding_dimension);
     output_layer.resize(output_vocab_size, output_embedding_dimension);
     this->ngram_size = ngram_size;
     this->input_vocab_size = input_vocab_size;
@@ -42,12 +34,34 @@ namespace nplm
     premultiplied = false;
 }
   
-void model::initialize(mt19937 &init_engine, bool init_normal, double init_range, double init_bias)
+void model::initialize(mt19937 &init_engine,
+    bool init_normal,
+    double init_range,
+    double init_bias,
+    string &parameter_update,
+    double adagrad_epsilon)
 {
-    input_layer.initialize(init_engine, init_normal, init_range);
-    output_layer.initialize(init_engine, init_normal, init_range, init_bias);
-    first_hidden_linear.initialize(init_engine, init_normal, init_range);
-    second_hidden_linear.initialize(init_engine, init_normal, init_range);
+    input_layer.initialize(init_engine,
+        init_normal,
+        init_range,
+        parameter_update,
+        adagrad_epsilon);
+    output_layer.initialize(init_engine,
+        init_normal,
+        init_range,
+        init_bias,
+        parameter_update,
+        adagrad_epsilon);
+    first_hidden_linear.initialize(init_engine,
+        init_normal,
+        init_range,
+        parameter_update,
+        adagrad_epsilon);
+    second_hidden_linear.initialize(init_engine,
+        init_normal,
+        init_range,
+        parameter_update,
+        adagrad_epsilon);
 }
 
 void model::premultiply()
@@ -56,12 +70,7 @@ void model::premultiply()
     // we can multiply them into a single linear layer *if* we are not training
     int context_size = ngram_size-1;
     Matrix<double,Dynamic,Dynamic> U = first_hidden_linear.U;
-    if (num_hidden == 0) {
-        first_hidden_linear.U.resize(output_embedding_dimension, input_vocab_size * context_size);
-    }
-    else {
-        first_hidden_linear.U.resize(num_hidden, input_vocab_size * context_size);
-    }
+    first_hidden_linear.U.resize(num_hidden, input_vocab_size * context_size);
     for (int i=0; i<context_size; i++)
         first_hidden_linear.U.middleCols(i*input_vocab_size, input_vocab_size) = U.middleCols(i*input_embedding_dimension, input_embedding_dimension) * input_layer.W->transpose();
     input_layer.W->resize(1,1); // try to save some memory
@@ -133,6 +142,12 @@ void model::read(const string &filename)
     read(filename, input_words, output_words);
 }
 
+void model::read(const string &filename, vector<string> &words)
+{
+    vector<string> output_words;
+    read(filename, words, output_words);
+}
+
 void model::read(const string &filename, vector<string> &input_words, vector<string> &output_words)
 {
     ifstream file(filename.c_str());
@@ -170,9 +185,13 @@ void model::read(const string &filename, vector<string> &input_words, vector<str
 	else if (line == "\\input_embeddings")
 	    input_layer.read(file);
 	else if (line == "\\hidden_weights 1")
-	    first_hidden_linear.read(file);
+	    first_hidden_linear.read_weights(file);
+	else if (line == "\\hidden_biases 1")
+	    first_hidden_linear.read_biases (file);
 	else if (line == "\\hidden_weights 2")
-	    second_hidden_linear.read(file);
+	    second_hidden_linear.read_weights(file);
+	else if (line == "\\hidden_biases 2")
+	    second_hidden_linear.read_biases (file);
 	else if (line == "\\output_weights")
 	    output_layer.read_weights(file);
 	else if (line == "\\output_biases")
@@ -191,9 +210,14 @@ void model::read(const string &filename, vector<string> &input_words, vector<str
     file.close();
 }
 
-    void model::write(const string &filename, const vector<string> &input_words, const vector<string> &output_words)
+void model::write(const string &filename, const vector<string> &input_words, const vector<string> &output_words)
 { 
     write(filename, &input_words, &output_words);
+}
+
+void model::write(const string &filename, const vector<string> &words)
+{ 
+    write(filename, &words, NULL);
 }
 
 void model::write(const string &filename) 
@@ -201,7 +225,7 @@ void model::write(const string &filename)
     write(filename, NULL, NULL);
 }
 
-    void model::write(const string &filename, const vector<string> *input_pwords, const vector<string> *output_pwords)
+void model::write(const string &filename, const vector<string> *input_pwords, const vector<string> *output_pwords)
 {
     ofstream file(filename.c_str());
     if (!file) throw runtime_error("Could not open file " + filename);
@@ -236,11 +260,19 @@ void model::write(const string &filename)
     file << endl;
     
     file << "\\hidden_weights 1" << endl;
-    first_hidden_linear.write(file);
+    first_hidden_linear.write_weights(file);
     file << endl;
+
+    file << "\\hidden_biases 1" << endl;
+    first_hidden_linear.write_biases(file);
+    file <<endl;
     
     file << "\\hidden_weights 2" << endl;
-    second_hidden_linear.write(file);
+    second_hidden_linear.write_weights(file);
+    file << endl;
+
+    file << "\\hidden_biases 2" << endl;
+    second_hidden_linear.write_biases(file);
     file << endl;
     
     file << "\\output_weights" << endl;

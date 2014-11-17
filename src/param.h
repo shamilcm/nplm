@@ -1,3 +1,4 @@
+//The framework for obtaining user arguments has been inspired by Sittichai Jiampojamarn's Many-to-Many alignment model (m2m-aligner). https://code.google.com/p/m2m-aligner/
 #pragma once
 
 #include <string>
@@ -18,7 +19,6 @@ struct param
     std::string input_words_file;
     std::string output_words_file;
     std::string model_prefix;
-    std::string init_model;
 
     int ngram_size;
     int vocab_size;
@@ -30,12 +30,15 @@ struct param
     int output_embedding_dimension;
     std::string activation_function;
     std::string loss_function;
+    std::string parameter_update;
 
     int minibatch_size;
     int validation_minibatch_size;
     int num_epochs;
     double learning_rate;
-
+    double conditioning_constant;
+    double decay;
+    double adagrad_epsilon;
     bool init_normal;
     double init_range;
 
@@ -57,3 +60,4 @@ struct param
 };
 
 } // namespace nplm
+

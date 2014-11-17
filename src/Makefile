@@ -1,7 +1,8 @@
 ### Compilation options.
 
 # C++ compiler. Tested with g++ and Intel icpc.
-CXX=g++
+#CXX=/usr/bin/g++
+CXX=/opt/local/bin/g++-mp-4.7
 #CXX=icpc
 
 # Compiler options. Note that -DEIGEN_NO_DEBUG is essential for good performance!
@@ -19,22 +20,26 @@ OS:=$(shell uname -s)
 ### Required libraries. You must install these prior to building.
 
 # Set this to the root directory of Boost (should have a subdirectory named boost):
-BOOST=/home/hieu/workspace/boost/boost_1_55_0.gcc
+
+#BOOST=/usr/usc/boost/1.51.0
 #BOOST=/usr
-#BOOST=/opt/local
+BOOST=/opt/local
 # Where to find Boost header files
 BOOST_INC=$(BOOST)/include
 
 # Set this to the root directory of Eigen (should have a subdirectory named Eigen):
-EIGEN=/home/hieu/workspace/eigen-3
+EIGEN=../3rdparty
 
 ### Optional libraries.
 
 # To disable multithreading, comment out the line below:
-#OMP=1
+OMP=1
 
 # To use the MKL library, uncomment the line below and set it to the MKL root:
 #MKL=/usr/usc/intel/12.1.1/mkl
+# Set to 1 if you want to use the Single Dynamic Library; comment out otherwise.
+# This is required for building the Python extensions, but doesn't work with building a static binary.
+MKL_SINGLE=1
 
 # For Python bindings, set the following and run 'make python/nplm.so'.
 PYTHON_VERSION=2.7
@@ -53,11 +58,13 @@ TCLAP=../3rdparty/tclap/include
 # Where to find Boost libraries
 BOOST_LIB=$(BOOST)/lib
 # On some systems, a suffix is appended for the multithreaded version.
-BOOST_LIB_SUFFIX=
-#BOOST_LIB_SUFFIX=-mt
+#BOOST_LIB_SUFFIX=
+BOOST_LIB_SUFFIX=-mt
 
 BOOST_CFLAGS=-I$(BOOST_INC)
 BOOST_LDFLAGS=
+BOOST_LDLIBS=-lboost_iostreams$(BOOST_LIB_SUFFIX) -lboost_system$(BOOST_LIB_SUFFIX) -lboost_filesystem$(BOOST_LIB_SUFFIX)
+#BOOST_LDLIBS=-lboost_system$(BOOST_LIB_SUFFIX) -lboost_thread$(BOOST_LIB_SUFFIX)
 ifdef USE_CHRONO
   BOOST_CFLAGS+=-DUSE_CHRONO
   BOOST_LDLIBS+=-lboost_system$(BOOST_LIB_SUFFIX) -lboost_chrono$(BOOST_LIB_SUFFIX)
@@ -78,27 +85,40 @@ ifdef OMP
 endif
 
 ifdef MKL
-  MKL_CFLAGS=-I$(MKL)/include -DEIGEN_USE_MKL_ALL
-  MKL_LDLIBS=-Wl,--start-group
-  ifeq ($(ARCH),x86_64)
-    MKL_LDFLAGS=-L$(MKL)/lib/intel64 -Wl,-rpath -Wl,$(MKL)/lib/intel64
-    MKL_LDLIBS+=-lmkl_intel_lp64
-  endif
-  ifeq ($(ARCH),i686)
-    MKL_LDFLAGS=-L$(MKL)/lib/ia32 -Wl,-rpath -Wl,$(MKL)/lib/ia32
-    MKL_LDLIBS+=-lmkl_intel
-  endif
+  ifdef MKL_SINGLE
+    ifeq ($(ARCH),x86_64)
+      MKL_LDFLAGS=-L$(MKL)/lib/intel64 -Wl,-rpath -Wl,$(MKL)/lib/intel64
+    endif
+    ifeq ($(ARCH),i686)
+      MKL_LDFLAGS=-L$(MKL)/lib/ia32 -Wl,-rpath -Wl,$(MKL)/lib/ia32
+    endif
+    MKL_CFLAGS=-I$(MKL)/include -DEIGEN_USE_MKL_ALL -DMKL_SINGLE
+    MKL_LDLIBS=-lmkl_rt
 
-  ifneq (,$(findstring g++,$(CXX)))
-    MKL_LDLIBS+=-lmkl_gnu_thread
-  endif
-  ifneq (,$(findstring icpc,$(CXX)))
-    MKL_LDLIBS+=-lmkl_intel_thread
-  endif
+  else
 
-  #MKL_LDLIBS=-lmkl_rt
-  MKL_LDLIBS+=-lmkl_core -Wl,--end-group
+    MKL_CFLAGS=-I$(MKL)/include -DEIGEN_USE_MKL_ALL
+    MKL_LDLIBS=-Wl,--start-group
+    ifeq ($(ARCH),x86_64)
+      MKL_LDFLAGS=-L$(MKL)/lib/intel64 -Wl,-rpath -Wl,$(MKL)/lib/intel64
+      MKL_LDLIBS+=-lmkl_intel_lp64
+    endif
+    ifeq ($(ARCH),i686)
+      MKL_LDFLAGS=-L$(MKL)/lib/ia32 -Wl,-rpath -Wl,$(MKL)/lib/ia32
+      MKL_LDLIBS+=-lmkl_intel
+    endif
+
+    ifneq (,$(findstring g++,$(CXX)))
+      MKL_LDLIBS+=-lmkl_gnu_thread
+    endif
+    ifneq (,$(findstring icpc,$(CXX)))
+      MKL_LDLIBS+=-lmkl_intel_thread
+    endif
+
+    MKL_LDLIBS+=-lmkl_core -Wl,--end-group
 endif
+endif
+
 
 ifdef STATIC
   LDFLAGS+=-static
@@ -122,13 +142,13 @@ RANLIB=ranlib
 # Rules
 
 BINS=trainNeuralNetwork testNeuralNetwork prepareNeuralLM testNeuralLM prepareNeuralTM
-LIBS=libneuralLM.a libneuralLM.so
+LIBS=libnplm.a libnplm.so
 OBJS=util.o model.o
 
 all: $(BINS) $(LIBS)
 
 clean:
-	rm -f *.o shared/*.o python/*.o $(BINS) $(LIBS) python/nplm.{cpp,so}
+	rm -f *.o shared/*.o python/*.o $(BINS) $(LIBS) python/nplm.{cpp,so} python/nptm.{cpp,so}
 
 install: all
 	mkdir -p ../bin
@@ -157,19 +177,25 @@ testNeuralLM: testNeuralLM.o $(OBJS)
 prepareNeuralTM: prepareNeuralTM.o $(OBJS)
 	$(CXX) $(ALL_LDFLAGS) $^ $(ALL_LDLIBS) -o $@
 
-libneuralLM.a: neuralLM.o $(OBJS)
+libnplm.a: neuralLM.o $(OBJS)
 	rm -f $@
 	$(AR) rv $@ $^
 	$(RANLIB) $@
 
-libneuralLM.so: $(addprefix shared/,neuralLM.o $(OBJS))
+libnplm.so: $(addprefix shared/,neuralLM.o $(OBJS))
 	$(CXX) -shared $(ALL_LDFLAGS) $^ $(ALL_LDLIBS) -o $@
 
-python/nplm.cpp: python/nplm.pyx
-	$(CYTHON) --cplus $^
+%.cpp: %.pyx
+	$(CYTHON) --cplus $^ -o $@
 
 python/nplm.o: python/nplm.cpp
 	$(CXX) -c -fPIC -I. $(ALL_CFLAGS) $(PYTHON_CFLAGS) $< -o $@
 
 python/nplm.so: python/nplm.o $(addprefix shared/,neuralLM.o $(OBJS))
+	$(CXX) -shared $(ALL_LDFLAGS) $(PYTHON_LDFLAGS) $^ $(ALL_LDLIBS) $(PYTHON_LDLIBS) -o $@ 
+
+python/nptm.o: python/nptm.cpp
+	$(CXX) -c -fPIC -I. $(ALL_CFLAGS) $(PYTHON_CFLAGS) $< -o $@
+
+python/nptm.so: python/nptm.o $(addprefix shared/,neuralTM.o $(OBJS))
 	$(CXX) -shared $(ALL_LDFLAGS) $(PYTHON_LDFLAGS) $^ $(ALL_LDLIBS) $(PYTHON_LDLIBS) -o $@ 

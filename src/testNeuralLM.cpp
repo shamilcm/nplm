@@ -2,10 +2,11 @@
 #include <fstream>
 
 #include <boost/algorithm/string/join.hpp>
+//#include <boost/thread/thread.hpp>
 #include <tclap/CmdLine.h>
 
-#include "../3rdparty/Eigen/Core"
-#include "../3rdparty/Eigen/Dense"
+#include <Eigen/Core>
+#include <Eigen/Dense>
 
 #include "param.h"
 
@@ -17,6 +18,47 @@ using namespace TCLAP;
 using namespace Eigen;
 
 using namespace nplm;
+
+void score(neuralLM &lm, int minibatch_size, vector<int>& start, vector< vector<int> > &ngrams,
+	   vector<double> &out) {
+    if (ngrams.size() == 0) return;
+    int ngram_size = ngrams[0].size();
+
+    if (minibatch_size == 0)
+    {
+        // Score one n-gram at a time. This is how the LM would be queried from a decoder.
+        for (int sent_id=0; sent_id<start.size()-1; sent_id++)
+	{	  
+	    double sent_log_prob = 0.0;
+	    for (int j=start[sent_id]; j<start[sent_id+1]; j++) 
+	        sent_log_prob += lm.lookup_ngram(ngrams[j]);
+	    out.push_back(sent_log_prob);
+	}
+    }
+    else
+    {
+	// Score a whole minibatch at a time.
+        Matrix<double,1,Dynamic> log_probs(ngrams.size());
+
+        Matrix<int,Dynamic,Dynamic> minibatch(ngram_size, minibatch_size);
+	minibatch.setZero();
+        for (int test_id = 0; test_id < ngrams.size(); test_id += minibatch_size)
+	{
+	    int current_minibatch_size = minibatch_size<ngrams.size()-test_id ? minibatch_size : ngrams.size()-test_id;
+	    for (int j=0; j<current_minibatch_size; j++)
+	        minibatch.col(j) = Map< Matrix<int,Dynamic,1> > (ngrams[test_id+j].data(), ngram_size);
+	    lm.lookup_ngram(minibatch.leftCols(current_minibatch_size), log_probs.middleCols(test_id, current_minibatch_size));
+	}
+
+	for (int sent_id=0; sent_id<start.size()-1; sent_id++)
+	{
+	    double sent_log_prob = 0.0;
+	    for (int j=start[sent_id]; j<start[sent_id+1]; j++)
+	        sent_log_prob += log_probs[j];
+	    out.push_back(sent_log_prob);
+	}
+    }
+}
 
 int main (int argc, char *argv[]) 
 {
@@ -78,7 +120,8 @@ int main (int argc, char *argv[])
 
     ///// Create language model
 
-    neuralLM lm(myParam.model_file);
+    neuralLM lm;
+    lm.read(myParam.model_file);
     lm.set_normalization(normalization);
     lm.set_log_base(10);
     lm.set_cache(1048576);
@@ -88,8 +131,6 @@ int main (int argc, char *argv[])
         lm.set_width(minibatch_size);
 
     ///// Read test data
-
-    double log_likelihood = 0.0;
 
     ifstream test_file(myParam.test_file.c_str());
     if (!test_file)
@@ -115,44 +156,33 @@ int main (int argc, char *argv[])
     }
     start.push_back(ngrams.size());
 
-    if (minibatch_size == 0)
-    {
-        // Score one n-gram at a time. This is how the LM would be queried from a decoder.
-        for (int sent_id=0; sent_id<start.size()-1; sent_id++)
-	{	  
-	    double sent_log_prob = 0.0;
-	    for (int j=start[sent_id]; j<start[sent_id+1]; j++) 
-	        sent_log_prob += lm.lookup_ngram(ngrams[j]);
-	    cout << sent_log_prob << endl;
-	    log_likelihood += sent_log_prob;
-	}
+    int num_threads = 1;
+    vector< vector<double> > sent_log_probs(num_threads);
+
+    /*
+    // Test thread safety
+    boost::thread_group tg;
+    for (int t=0; t < num_threads; t++) {
+      tg.create_thread(boost::bind(score, lm, minibatch_size, boost::ref(start), boost::ref(ngrams), boost::ref(sent_log_probs[t]))); // copy lm
     }
-    else
-    {
-	// Score a whole minibatch at a time.
-        Matrix<double,1,Dynamic> log_probs(ngrams.size());
+    tg.join_all();
+    */
+    score(lm, minibatch_size, start, ngrams, sent_log_probs[0]);
 
-        Matrix<int,Dynamic,Dynamic> minibatch(ngram_size, minibatch_size);
-	minibatch.setZero();
-        for (int test_id = 0; test_id < ngrams.size(); test_id += minibatch_size)
-	{
-	    int current_minibatch_size = minibatch_size<ngrams.size()-test_id ? minibatch_size : ngrams.size()-test_id;
-	    for (int j=0; j<current_minibatch_size; j++)
-	        minibatch.col(j) = Map< Matrix<int,Dynamic,1> > (ngrams[test_id+j].data(), ngram_size);
-	    lm.lookup_ngram(minibatch.leftCols(current_minibatch_size), log_probs.middleCols(test_id, current_minibatch_size));
-	}
-
-	for (int sent_id=0; sent_id<start.size()-1; sent_id++)
-	{
-	    double sent_log_prob = 0.0;
-	    for (int j=start[sent_id]; j<start[sent_id+1]; j++)
-	        sent_log_prob += log_probs[j];
-	    cout << sent_log_prob << endl;
-	    log_likelihood += sent_log_prob;
-	}
+    vector<double> log_likelihood(num_threads);
+    std::fill(log_likelihood.begin(), log_likelihood.end(), 0.0);
+    for (int i=0; i<sent_log_probs[0].size(); i++) {
+        for (int t=0; t<num_threads; t++)
+	    cout << sent_log_probs[t][i] << "\t";
+	cout << endl;
+        for (int t=0; t<num_threads; t++)
+	log_likelihood[t] += sent_log_probs[t][i];
     }
     
-    cerr << "Test log10-likelihood: " << log_likelihood << endl;
+    cerr << "Test log10-likelihood: ";
+    for (int t=0; t<num_threads; t++)
+      cerr << log_likelihood[t] << " ";
+    cerr << endl;
     #ifdef USE_CHRONO
     cerr << "Propagation times:";
     for (int i=0; i<timer.size(); i++)

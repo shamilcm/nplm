@@ -80,7 +80,7 @@ int main (int argc, char *argv[])
     cerr << "Number of test instances: " << test_data_size << endl;
 
     Map< Matrix<int,Dynamic,Dynamic> > test_data(test_data_flat.data(), myParam.ngram_size, test_data_size);
-
+    
     ///// Score test data
 
     int num_batches = (test_data_size-1)/myParam.minibatch_size + 1;
@@ -101,10 +101,7 @@ int main (int argc, char *argv[])
 	prop.fProp(minibatch.topRows(myParam.ngram_size-1));
 
 	// Do full forward prop through output word embedding layer
-        if (prop.skip_hidden)
-            prop.output_layer_node.param->fProp(prop.first_hidden_activation_node.fProp_matrix, scores);
-        else
-            prop.output_layer_node.param->fProp(prop.second_hidden_activation_node.fProp_matrix, scores);
+	prop.output_layer_node.param->fProp(prop.second_hidden_activation_node.fProp_matrix, scores);
 
 	// And softmax and loss
 	double minibatch_log_likelihood;
