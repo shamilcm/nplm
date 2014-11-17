@@ -23,6 +23,7 @@ public:
     Node<Linear_layer> second_hidden_linear_node;
     Node<Activation_function> second_hidden_activation_node;
     Node<Output_word_embeddings> output_layer_node;
+    bool skip_hidden;
 
 public:
     propagator () : minibatch_size(0), pnn(0) { }
@@ -38,6 +39,7 @@ public:
 	output_layer_node(&nn.output_layer, minibatch_size),
 	minibatch_size(minibatch_size)
     {
+        skip_hidden = (nn.num_hidden == 0);
     }
 
     // This must be called if the underlying model is resized.
@@ -83,12 +85,14 @@ public:
 	stop_timer(1);
     
 
+        if (!skip_hidden) {
 	start_timer(2);
 	second_hidden_linear_node.param->fProp(first_hidden_activation_node.fProp_matrix,
 					       second_hidden_linear_node.fProp_matrix);
 	second_hidden_activation_node.param->fProp(second_hidden_linear_node.fProp_matrix,
 						   second_hidden_activation_node.fProp_matrix);
 	stop_timer(2);
+        }
 
 	// The propagation stops here because the last layer is very expensive.
     }
@@ -112,19 +116,20 @@ public:
 	stop_timer(7);
 	
 	start_timer(8);
+  Node<Activation_function> & final_hidden_activation_node = skip_hidden ? first_hidden_activation_node : second_hidden_activation_node;
   if (parameter_update == "SGD") {
-    output_layer_node.param->computeGradient(second_hidden_activation_node.fProp_matrix,
+    output_layer_node.param->computeGradient(final_hidden_activation_node.fProp_matrix,
                output,
                learning_rate,
                momentum);
   } else if (parameter_update == "ADA") {
-    output_layer_node.param->computeGradientAdagrad(second_hidden_activation_node.fProp_matrix,
+    output_layer_node.param->computeGradientAdagrad(final_hidden_activation_node.fProp_matrix,
                output,
                learning_rate);
   } else if (parameter_update == "ADAD") {
     //std::cerr<<"Adadelta gradient"<<endl;
-    int current_minibatch_size = second_hidden_activation_node.fProp_matrix.cols();
-    output_layer_node.param->computeGradientAdadelta(second_hidden_activation_node.fProp_matrix,
+    int current_minibatch_size = final_hidden_activation_node.fProp_matrix.cols();
+    output_layer_node.param->computeGradientAdadelta(final_hidden_activation_node.fProp_matrix,
                output,
                1.0/current_minibatch_size,
                conditioning_constant,
@@ -166,21 +171,22 @@ public:
 	
 
 	start_timer(8);
+  Node<Activation_function> & final_hidden_activation_node = skip_hidden ? first_hidden_activation_node : second_hidden_activation_node;
   if (parameter_update == "SGD") {
-    output_layer_node.param->computeGradient(second_hidden_activation_node.fProp_matrix,
+    output_layer_node.param->computeGradient(final_hidden_activation_node.fProp_matrix,
                samples,
                weights,
                learning_rate,
                momentum);
   } else if (parameter_update == "ADA") {
-    output_layer_node.param->computeGradientAdagrad(second_hidden_activation_node.fProp_matrix,
+    output_layer_node.param->computeGradientAdagrad(final_hidden_activation_node.fProp_matrix,
                samples,
                weights,
                learning_rate);
   } else if (parameter_update == "ADAD") {
-    int current_minibatch_size = second_hidden_activation_node.fProp_matrix.cols();
+    int current_minibatch_size = final_hidden_activation_node.fProp_matrix.cols();
     //std::cerr<<"Adadelta gradient"<<endl;
-    output_layer_node.param->computeGradientAdadelta(second_hidden_activation_node.fProp_matrix,
+    output_layer_node.param->computeGradientAdadelta(final_hidden_activation_node.fProp_matrix,
                samples,
                weights,
                1.0/current_minibatch_size,
@@ -217,7 +223,22 @@ private:
   // functions are together
   ////////BACKPROP////////////
         start_timer(9);
-  second_hidden_activation_node.param->bProp(output_layer_node.bProp_matrix,
+  if (skip_hidden)
+  {
+        start_timer(9);
+        first_hidden_activation_node.param->bProp(output_layer_node.bProp_matrix,
+                                                first_hidden_activation_node.bProp_matrix,
+                                                first_hidden_linear_node.fProp_matrix,
+                                                first_hidden_activation_node.fProp_matrix);
+
+        first_hidden_linear_node.param->bProp(first_hidden_activation_node.bProp_matrix,
+                                                first_hidden_linear_node.bProp_matrix);
+        stop_timer(9);
+
+  }
+  else
+  {
+        second_hidden_activation_node.param->bProp(output_layer_node.bProp_matrix,
                                            second_hidden_activation_node.bProp_matrix,
                                            second_hidden_linear_node.fProp_matrix,
                                            second_hidden_activation_node.fProp_matrix);
@@ -233,13 +254,16 @@ private:
 						  first_hidden_linear_node.fProp_matrix,
 						  first_hidden_activation_node.fProp_matrix);
 
-  first_hidden_linear_node.param->bProp(first_hidden_activation_node.bProp_matrix,
+        first_hidden_linear_node.param->bProp(first_hidden_activation_node.bProp_matrix,
 					      first_hidden_linear_node.bProp_matrix);
 	stop_timer(11);
+  }
   //std::cerr<<"First hidden layer node backprop matrix is"<<first_hidden_linear_node.bProp_matrix<<std::endl;
   //std::getchar();
   ////COMPUTE GRADIENT/////////
   if (parameter_update == "SGD") {
+    if (!skip_hidden)
+    {
     start_timer(10);
     second_hidden_linear_node.param->computeGradient(second_hidden_activation_node.bProp_matrix,
                  first_hidden_activation_node.fProp_matrix,
@@ -247,6 +271,7 @@ private:
                  momentum,
                  L2_reg);
     stop_timer(10);
+    }
 
     // First hidden layer
 
@@ -265,12 +290,15 @@ private:
               learning_rate, momentum, L2_reg);
     stop_timer(13);
   } else if (parameter_update == "ADA") {
+    if (!skip_hidden)
+    {
     start_timer(10);
     second_hidden_linear_node.param->computeGradientAdagrad(second_hidden_activation_node.bProp_matrix,
                  first_hidden_activation_node.fProp_matrix,
                  learning_rate,
                  L2_reg);
     stop_timer(10);
+    }
 
     // First hidden layer
 
@@ -293,6 +321,8 @@ private:
   } else if (parameter_update == "ADAD") {
     int current_minibatch_size = first_hidden_activation_node.fProp_matrix.cols();
     //std::cerr<<"Adadelta gradient"<<endl;
+    if (!skip_hidden)
+    {
     start_timer(10);
     second_hidden_linear_node.param->computeGradientAdadelta(second_hidden_activation_node.bProp_matrix,
                  first_hidden_activation_node.fProp_matrix,
@@ -301,6 +331,7 @@ private:
                  conditioning_constant,
                  decay);
     stop_timer(10);
+    }
     //std::cerr<<"Finished gradient for second hidden linear layer"<<std::endl;
 
     // First hidden layer
