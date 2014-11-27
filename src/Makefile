@@ -20,17 +20,17 @@ OS:=$(shell uname -s)
 
 # Set this to the root directory of Boost (should have a subdirectory named boost):
 
-BOOST=/opt/local
+BOOST=/home/shamil/Software/boost_1_57_0
 # Where to find Boost header files
 BOOST_INC=$(BOOST)/include
 
 # Set this to the root directory of Eigen (should have a subdirectory named Eigen):
-EIGEN=../3rdparty
+EIGEN=/home/shamil/Software/eigen_3_1_4
 
 ### Optional libraries.
 
 # To disable multithreading, comment out the line below:
-OMP=1
+#OMP=1
 
 # To use the MKL library, uncomment the line below and set it to the MKL root:
 #MKL=/usr/usc/intel/12.1.1/mkl
@@ -39,7 +39,7 @@ OMP=1
 MKL_SINGLE=1
 
 # For Python bindings, set the following and run 'make python/nplm.so'.
-PYTHON_VERSION=2.7
+PYTHON_VERSION=2.6
 #PYTHON_ROOT=/opt/local/Library/Frameworks/Python.framework/Versions/$(PYTHON_VERSION)
 PYTHON_ROOT=/home/nlg-01/chiangd/pkg64/python
 CYTHON=$(PYTHON_ROOT)/bin/cython
@@ -59,7 +59,7 @@ BOOST_LIB=$(BOOST)/lib
 # BOOST_LIB_SUFFIX=-mt
 
 BOOST_CFLAGS=-I$(BOOST_INC)
-BOOST_LDFLAGS=
+BOOST_LDFLAGS=-pthread
 BOOST_LDLIBS=-lboost_iostreams$(BOOST_LIB_SUFFIX) -lboost_system$(BOOST_LIB_SUFFIX) -lboost_filesystem$(BOOST_LIB_SUFFIX)
 #BOOST_LDLIBS=-lboost_system$(BOOST_LIB_SUFFIX) -lboost_thread$(BOOST_LIB_SUFFIX)
 ifdef USE_CHRONO
